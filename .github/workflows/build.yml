@@ -1,0 +1,146 @@
+name: Build Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            use_cross: false
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            use_cross: true
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            use_cross: true
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            use_cross: true
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            use_cross: false
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            use_cross: false
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            use_cross: false
+          - target: aarch64-pc-windows-msvc
+            os: windows-latest
+            use_cross: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install protobuf compiler
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: release
+          target: ${{ matrix.target }}
+          override: true
+          toolchain: stable
+
+      - name: Install cross
+        if: matrix.use_cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build lmdb-grpc-server
+        run: |
+          if [ "${{ matrix.use_cross }}" = "true" ]; then
+            cross build --release --target ${{ matrix.target }} --bin lmdb-grpc-server
+          else
+            cargo build --release --target ${{ matrix.target }} --bin lmdb-grpc-server
+          fi
+        shell: bash
+
+      - name: Build lmdb-tui-agent
+        run: |
+          if [ "${{ matrix.use_cross }}" = "true" ]; then
+            cross build --release --target ${{ matrix.target }} --bin lmdb-tui-agent
+          else
+            cargo build --release --target ${{ matrix.target }} --bin lmdb-tui-agent
+          fi
+        shell: bash
+
+      - name: Prepare artifacts
+        shell: bash
+        run: |
+          VERSION=$(grep '^version =' Cargo.toml | head -n1 | cut -d '"' -f2)
+          TARGET=${{ matrix.target }}
+          
+          mkdir -p artifacts
+          
+          if [[ "$TARGET" == *windows* ]]; then
+            cp target/$TARGET/release/lmdb-grpc-server.exe artifacts/
+            cp target/$TARGET/release/lmdb-tui-agent.exe artifacts/
+            cd artifacts
+            7z a lmdb-grpc-server-${VERSION}-${TARGET}.zip lmdb-grpc-server.exe
+            7z a lmdb-tui-agent-${VERSION}-${TARGET}.zip lmdb-tui-agent.exe
+          else
+            cp target/$TARGET/release/lmdb-grpc-server artifacts/
+            cp target/$TARGET/release/lmdb-tui-agent artifacts/
+            cd artifacts
+            tar -czf lmdb-grpc-server-${VERSION}-${TARGET}.tar.gz lmdb-grpc-server
+            tar -czf lmdb-tui-agent-${VERSION}-${TARGET}.tar.gz lmdb-tui-agent
+          fi
+
+      - name: Upload lmdb-grpc-server artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: lmdb-grpc-server-${{ matrix.target }}
+          path: artifacts/lmdb-grpc-server-*
+
+      - name: Upload lmdb-tui-agent artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: lmdb-tui-agent-${{ matrix.target }}
+          path: artifacts/lmdb-tui-agent-*
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/*/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
