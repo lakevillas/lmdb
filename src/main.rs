@@ -2,7 +2,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use clap::{command, CommandFactory, Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 use heed::Error as HeedError;
 use lmdb_tui::{app, export, remote};
 use log::LevelFilter;
