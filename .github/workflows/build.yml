@@ -24,9 +24,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install protoc (Windows)
-        if: runner.os == 'Windows'
-        run: choco install protoc -y
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo: "protocolbuffers/protobuf"
+          version: "33.4"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
