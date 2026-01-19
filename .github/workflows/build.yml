@@ -24,12 +24,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install protobuf compiler
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler
-
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
@@ -37,10 +31,6 @@ jobs:
           target: ${{ matrix.target }}
           override: true
           toolchain: stable
-
-      - name: Install cross
-        if: matrix.use_cross
-        run: cargo install cross --git https://github.com/cross-rs/cross
 
       - name: Cache cargo registry
         uses: actions/cache@v3
@@ -52,44 +42,24 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build lmdb-grpc-server
-        run: |
-          if [ "${{ matrix.use_cross }}" = "true" ]; then
-            cross build --release --target ${{ matrix.target }} --bin lmdb-grpc-server
-          else
-            cargo build --release --target ${{ matrix.target }} --bin lmdb-grpc-server
-          fi
-        shell: bash
+        run: cargo build --release --target ${{ matrix.target }} --bin lmdb-grpc-server
 
       - name: Build lmdb-tui-agent
-        run: |
-          if [ "${{ matrix.use_cross }}" = "true" ]; then
-            cross build --release --target ${{ matrix.target }} --bin lmdb-tui-agent
-          else
-            cargo build --release --target ${{ matrix.target }} --bin lmdb-tui-agent
-          fi
-        shell: bash
+        run: cargo build --release --target ${{ matrix.target }} --bin lmdb-tui-agent
 
       - name: Prepare artifacts
-        shell: bash
         run: |
-          VERSION=$(grep '^version =' Cargo.toml | head -n1 | cut -d '"' -f2)
-          TARGET=${{ matrix.target }}
+          $VERSION = (Select-String -Path "Cargo.toml" -Pattern "^version = " | Select-Object -First 1).ToString().Split('"')[1]
+          $TARGET = "${{ matrix.target }}"
           
-          mkdir -p artifacts
+          New-Item -ItemType Directory -Force -Path artifacts
           
-          if [[ "$TARGET" == *windows* ]]; then
-            cp target/$TARGET/release/lmdb-grpc-server.exe artifacts/
-            cp target/$TARGET/release/lmdb-tui-agent.exe artifacts/
-            cd artifacts
-            7z a lmdb-grpc-server-${VERSION}-${TARGET}.zip lmdb-grpc-server.exe
-            7z a lmdb-tui-agent-${VERSION}-${TARGET}.zip lmdb-tui-agent.exe
-          else
-            cp target/$TARGET/release/lmdb-grpc-server artifacts/
-            cp target/$TARGET/release/lmdb-tui-agent artifacts/
-            cd artifacts
-            tar -czf lmdb-grpc-server-${VERSION}-${TARGET}.tar.gz lmdb-grpc-server
-            tar -czf lmdb-tui-agent-${VERSION}-${TARGET}.tar.gz lmdb-tui-agent
-          fi
+          Copy-Item "target\$TARGET\release\lmdb-grpc-server.exe" -Destination artifacts\
+          Copy-Item "target\$TARGET\release\lmdb-tui-agent.exe" -Destination artifacts\
+          
+          Compress-Archive -Path "artifacts\lmdb-grpc-server.exe" -DestinationPath "artifacts\lmdb-grpc-server-$VERSION-$TARGET.zip"
+          Compress-Archive -Path "artifacts\lmdb-tui-agent.exe" -DestinationPath "artifacts\lmdb-tui-agent-$VERSION-$TARGET.zip"
+        shell: powershell
 
       - name: Upload lmdb-grpc-server artifact
         uses: actions/upload-artifact@v3
