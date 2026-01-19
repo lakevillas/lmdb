@@ -44,6 +44,9 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Build lmdb-tui
+        run: cargo build --release --target ${{ matrix.target }} --bin lmdb-tui
+
       - name: Build lmdb-grpc-server
         run: cargo build --release --target ${{ matrix.target }} --bin lmdb-grpc-server
 
@@ -57,12 +60,20 @@ jobs:
           
           New-Item -ItemType Directory -Force -Path artifacts
           
+          Copy-Item "target\$TARGET\release\lmdb-tui.exe" -Destination artifacts\
           Copy-Item "target\$TARGET\release\lmdb-grpc-server.exe" -Destination artifacts\
           Copy-Item "target\$TARGET\release\lmdb-tui-agent.exe" -Destination artifacts\
           
+          Compress-Archive -Path "artifacts\lmdb-tui.exe" -DestinationPath "artifacts\lmdb-tui-$VERSION-$TARGET.zip"
           Compress-Archive -Path "artifacts\lmdb-grpc-server.exe" -DestinationPath "artifacts\lmdb-grpc-server-$VERSION-$TARGET.zip"
           Compress-Archive -Path "artifacts\lmdb-tui-agent.exe" -DestinationPath "artifacts\lmdb-tui-agent-$VERSION-$TARGET.zip"
         shell: powershell
+
+      - name: Upload lmdb-tui artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lmdb-tui-${{ matrix.target }}
+          path: artifacts/lmdb-tui-*
 
       - name: Upload lmdb-grpc-server artifact
         uses: actions/upload-artifact@v4
